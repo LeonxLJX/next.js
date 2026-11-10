@@ -763,22 +763,23 @@ export default function OuterLayoutRouter({
     }
 
     if (process.env.__NEXT_CACHE_COMPONENTS) {
-      const navigationState = bfcacheEntry.navigationState!
-      if (process.env.NODE_ENV !== 'production') {
+      // Provide the entry's navigation state to its subtree. This is only
+      // needed in the browser. A server render has a single, active entry,
+      // whose values are the ones the root providers in AppRouter already
+      // supply, and the server renderer is recursive, so the extra providers
+      // at every segment level would only use up stack there.
+      if (typeof window !== 'undefined') {
+        const navigationState = bfcacheEntry.navigationState!
+        if (process.env.NODE_ENV !== 'production') {
+          child = (
+            <NavigationPromisesContext.Provider
+              value={navigationState.navigationPromises}
+            >
+              {child}
+            </NavigationPromisesContext.Provider>
+          )
+        }
         child = (
-          <NavigationPromisesContext.Provider
-            value={navigationState.navigationPromises}
-          >
-            {child}
-          </NavigationPromisesContext.Provider>
-        )
-      }
-      child = (
-        <Activity
-          name={debugNameToDisplay}
-          key={stateKey}
-          mode={stateKey === activeStateKey ? 'visible' : 'hidden'}
-        >
           <PathParamsContext.Provider value={navigationState.params}>
             <PathnameContext.Provider value={navigationState.pathname}>
               <SearchParamsContext.Provider
@@ -788,6 +789,15 @@ export default function OuterLayoutRouter({
               </SearchParamsContext.Provider>
             </PathnameContext.Provider>
           </PathParamsContext.Provider>
+        )
+      }
+      child = (
+        <Activity
+          name={debugNameToDisplay}
+          key={stateKey}
+          mode={stateKey === activeStateKey ? 'visible' : 'hidden'}
+        >
+          {child}
         </Activity>
       )
     }
