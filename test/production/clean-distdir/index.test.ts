@@ -120,6 +120,35 @@ describe('Cleaning distDir', () => {
     )
   })
 
+  it('should not type check stale files in the types directory', async () => {
+    // When the tsconfig.json includes `.next/types` (e.g. it was added when
+    // the project had an `app` dir), they are type checked, which happens
+    // before compilation for the Pages Router.
+    const tsconfig = {
+      include: ['next-env.d.ts', '.next/types/**/*.ts', '**/*.ts', '**/*.tsx'],
+    }
+    await next.patchFile(
+      'tsconfig.json',
+      JSON.stringify(tsconfig),
+      async () => {
+        await next.build()
+
+        // A leftover of a previous build (e.g. generated types of a config
+        // option that has been disabled since)
+        await next.patchFile(
+          '.next/types/stale.ts',
+          'export const stale: number = "not a number"\n'
+        )
+
+        const { exitCode, cliOutput } = await next.build()
+        expect(cliOutput).not.toContain('stale.ts')
+        expect(exitCode).toBe(0)
+        expect(await next.hasFile('.next/types/stale.ts')).toBe(false)
+        expect(await next.hasFile('.next/types/routes.d.ts')).toBe(true)
+      }
+    )
+  })
+
   it('should not leave a startable build behind when the build fails', async () => {
     await next.build()
     expect(await next.hasFile('.next/BUILD_ID')).toBe(true)

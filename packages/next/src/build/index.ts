@@ -1729,14 +1729,24 @@ export default async function build(
           )
 
           if (distDirWritesBeforeTurbopack) {
-            for (const file of routeTypesFiles) {
+            const typesDir = path.dirname(routeTypesFilePath)
+            const typesFiles = [
+              ...routeTypesFiles,
+              validatorFilePath,
+              ...(wroteCacheLifeTypes ? [cacheLifeFilePath] : []),
+              rootParamsTypesFilePath,
+            ]
+            for (const file of typesFiles) {
               distDirWritesBeforeTurbopack.add(file)
             }
-            distDirWritesBeforeTurbopack.add(validatorFilePath)
-            if (wroteCacheLifeTypes) {
-              distDirWritesBeforeTurbopack.add(cacheLifeFilePath)
-            }
-            distDirWritesBeforeTurbopack.add(rootParamsTypesFilePath)
+            // The distDir wasn't cleaned, but the types are type checked
+            // before the stale output is removed after compilation (for the
+            // Pages Router), so remove stale types (e.g. of a config option
+            // that has been disabled since) right away.
+            await recursiveDeleteSyncWithAsyncRetries(
+              typesDir,
+              new Set(typesFiles.map((file) => path.relative(typesDir, file)))
+            )
           }
         })
 
