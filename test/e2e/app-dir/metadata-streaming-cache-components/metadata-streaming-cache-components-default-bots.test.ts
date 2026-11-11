@@ -252,9 +252,7 @@ function expectOptionalCatchallParams(html: string) {
         await assertNoConsoleErrors(browser)
       })
 
-      // Prerendered shells are served from the CDN on Vercel without invoking
-      // a function, so the bypass is only observable on a self-hosted server.
-      // @gate disableProgressiveLoadingForNonJsBots && !deploy
+      // @gate disableProgressiveLoadingForNonJsBots
       it('sends no hidden content to non-JS bots', async () => {
         // The fixture does not set the flag itself; the Cache Components shard
         // enables it via config defaulting (__NEXT_CACHE_COMPONENTS).

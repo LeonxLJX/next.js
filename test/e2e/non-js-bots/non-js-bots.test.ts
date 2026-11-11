@@ -57,9 +57,6 @@ describe('non-js-bots', () => {
     })
   })
 
-  // Prerendered routes are served from the CDN on Vercel without invoking a
-  // function, so the bypass is only observable on a self-hosted server.
-  // @force-gate !deploy
   describe('prerendered routes', () => {
     it('forces a dynamic render for non-JS bots (app)', async () => {
       const { res, html } = await fetchHTML(
