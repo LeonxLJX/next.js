@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
-
-export const dynamic = 'force-dynamic'
+import { connection } from 'next/server'
 
 async function SlowContent() {
+  await connection()
   await new Promise((resolve) => setTimeout(resolve, 500))
   return <p>slow-content-marker</p>
 }

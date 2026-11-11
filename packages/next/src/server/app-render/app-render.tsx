@@ -3590,10 +3590,10 @@ async function renderToStream(
   const waitForAllReady =
     supportsDynamicResponse !== true || disableProgressiveLoading === true
 
-  // Infinity disables Fizz's progressive chunking (default 12800) so every
-  // completed Suspense boundary is inlined at its position; non-JS bots can't
-  // run the scripts that patch outlined boundaries into the document.
-  // Must never be set on prerender paths: Fizz persists it into the
+  // Infinity disables React SSR's progressive chunking (default 12800) so
+  // every completed Suspense boundary is inlined at its position; non-JS bots
+  // can't run the scripts that patch outlined boundaries into the document.
+  // Must never be set on prerender paths: React persists it into the
   // JSON-serialized postponed state (as null), corrupting resume renders.
   const progressiveChunkSize = disableProgressiveLoading ? Infinity : undefined
 

@@ -524,9 +524,9 @@ export async function renderToHTMLImpl(
   } = renderOpts
   const { App } = extra
 
-  // Infinity disables Fizz's progressive chunking (default 12800) so every
-  // completed Suspense boundary is inlined at its position; non-JS bots can't
-  // run the scripts that patch outlined boundaries into the document.
+  // Infinity disables React SSR's progressive chunking (default 12800) so
+  // every completed Suspense boundary is inlined at its position; non-JS bots
+  // can't run the scripts that patch outlined boundaries into the document.
   const progressiveChunkSize = renderOpts.disableProgressiveLoading
     ? Infinity
     : undefined

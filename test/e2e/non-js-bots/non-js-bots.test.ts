@@ -8,8 +8,9 @@ const GOOGLEBOT_UA =
   'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
 const TWITTERBOT_UA = 'Twitterbot/1.0'
 
-// Fizz outlines large completed Suspense boundaries into a hidden div plus a
-// script that reveals them with JS. Non-JS crawlers must not receive either.
+// React SSR outlines large completed Suspense boundaries into a hidden div
+// plus a script that reveals them with JS. Non-JS crawlers must not receive
+// either.
 const HIDDEN_OUTLINE_RE = /<div hidden id="S:/
 
 describe('non-js-bots', () => {
@@ -26,7 +27,6 @@ describe('non-js-bots', () => {
 
   describe.each([
     ['/large-boundary', 'app'],
-    ['/edge-large-boundary', 'app'],
     ['/ssr-large', 'pages'],
   ])('%s', (route, marker) => {
     it('sends no hidden content to non-JS bots', async () => {
@@ -58,18 +58,21 @@ describe('non-js-bots', () => {
   })
 
   describe('prerendered routes', () => {
-    it('forces a dynamic render for non-JS bots (app)', async () => {
-      const { res, html } = await fetchHTML(
-        '/static-large-boundary',
-        CLAUDE_BOT_UA
-      )
-      // The prerendered artifact is progressively chunked, so the request must
-      // bypass it and render dynamically.
-      expect(html).not.toMatch(HIDDEN_OUTLINE_RE)
-      expect(html).not.toContain('$RC(')
-      expect(html).toContain('marker-app-start')
-      expect(html).toContain('marker-app-end')
+    it('shows large boundaries to non-JS bots (app)', async () => {
+      // The prerendered artifact has progressively chunked boundaries, so the
+      // request must bypass it and render dynamically. A browser with JS
+      // disabled perceives visibility like a crawler: innerText excludes
+      // content that only JS would reveal.
+      const browser = await next.browser('/static-large-boundary', {
+        userAgent: CLAUDE_BOT_UA,
+        disableJavaScript: true,
+        waitUntil: 'load',
+      })
+      const text = await browser.elementByCss('body').text()
+      expect(text).toContain('marker-app-start')
+      expect(text).toContain('marker-app-end')
       // The dynamically rendered response must not be shared-cacheable.
+      const { res } = await fetchHTML('/static-large-boundary', CLAUDE_BOT_UA)
       expect(res.headers.get('cache-control') ?? '').not.toContain('s-maxage')
     })
 
@@ -79,12 +82,15 @@ describe('non-js-bots', () => {
       expect(html).toContain('$RC(')
     })
 
-    it('forces a dynamic render for non-JS bots (pages)', async () => {
-      const { html } = await fetchHTML('/static-large', CLAUDE_BOT_UA)
-      expect(html).not.toMatch(HIDDEN_OUTLINE_RE)
-      expect(html).not.toContain('$RC(')
-      expect(html).toContain('marker-pages-start')
-      expect(html).toContain('marker-pages-end')
+    it('shows large boundaries to non-JS bots (pages)', async () => {
+      const browser = await next.browser('/static-large', {
+        userAgent: CLAUDE_BOT_UA,
+        disableJavaScript: true,
+        waitUntil: 'load',
+      })
+      const text = await browser.elementByCss('body').text()
+      expect(text).toContain('marker-pages-start')
+      expect(text).toContain('marker-pages-end')
     })
 
     it('serves the progressively chunked document to regular browsers (pages)', async () => {

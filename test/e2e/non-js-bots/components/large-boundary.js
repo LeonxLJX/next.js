@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 
-// ~21KB so the completed boundary exceeds Fizz's default progressiveChunkSize
+// ~21KB so the completed boundary exceeds the default progressiveChunkSize
 // (12800) and gets outlined for JS-capable clients.
 const bigText = 'lorem ipsum dolor sit amet '.repeat(800)
 

@@ -1,7 +1,16 @@
+import { Suspense } from 'react'
+import { connection } from 'next/server'
 import { LargeBoundary } from '../../components/large-boundary'
 
-export const dynamic = 'force-dynamic'
+async function Content() {
+  await connection()
+  return <LargeBoundary id="app" />
+}
 
 export default function Page() {
-  return <LargeBoundary id="app" />
+  return (
+    <Suspense fallback={<p>loading-shell</p>}>
+      <Content />
+    </Suspense>
+  )
 }
