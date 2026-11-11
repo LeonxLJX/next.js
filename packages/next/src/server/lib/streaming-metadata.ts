@@ -43,6 +43,12 @@ export function shouldDisableProgressiveLoading(
   if (!userAgent || isOversizedUserAgent(userAgent)) {
     return false
   }
-  const nonJsBots = experimental.nonJsBots ?? NON_JS_BOT_UA_RE
+  // Serialized configs (standalone output, server-files manifest) cannot
+  // carry a RegExp, so a custom pattern only takes effect with the live
+  // config. Everywhere else the default list applies.
+  const nonJsBots =
+    experimental.nonJsBots instanceof RegExp
+      ? experimental.nonJsBots
+      : NON_JS_BOT_UA_RE
   return nonJsBots.test(userAgent)
 }

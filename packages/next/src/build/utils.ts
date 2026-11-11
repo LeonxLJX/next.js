@@ -3,7 +3,6 @@ import type {
   NextConfigRuntime,
 } from '../server/config-shared'
 import type { AssetBinding } from './webpack/loaders/get-module-build-info'
-import { serializeNonJsBots } from '../shared/lib/router/utils/non-js-bots'
 import type { ServerRuntime } from '../types'
 import type { BuildManifest } from '../server/get-page-files'
 import {
@@ -1444,16 +1443,6 @@ export async function copyTracedFiles(
   const nextConfig = {
     ...serverConfig,
     distDir: `./${path.relative(dir, distDir)}`,
-  }
-  // RegExp configs are embedded as JSON below, so serialize them into their
-  // source string here. They are revived back into a RegExp where the
-  // standalone config is loaded.
-  if (nextConfig.experimental?.nonJsBots instanceof RegExp) {
-    nextConfig.experimental = {
-      ...nextConfig.experimental,
-      // @ts-expect-error: serialize the regex config into string
-      nonJsBots: serializeNonJsBots(nextConfig.experimental.nonJsBots),
-    }
   }
   try {
     const packageJsonPath = path.join(distDir, '../package.json')

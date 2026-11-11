@@ -24,7 +24,6 @@ import { existsSync, promises as fs } from 'fs'
 import os from 'os'
 import { getNextBuildDebuggerPortOffset, Worker } from '../lib/worker'
 import { defaultConfig, getNextConfigRuntime } from '../server/config-shared'
-import { serializeNonJsBots } from '../shared/lib/router/utils/non-js-bots'
 import devalue from 'next/dist/compiled/devalue'
 import findUp from 'next/dist/compiled/find-up'
 import { nanoid } from 'next/dist/compiled/nanoid/index.cjs'
@@ -2091,22 +2090,6 @@ export default async function build(
           // but we unconditionally want to remove configFile for this manifest
           let runtimeConfigWithoutFilePath = { ...runtimeConfig }
           delete (runtimeConfigWithoutFilePath as NextConfigComplete).configFile
-
-          // RegExp configs cross this JSON manifest as their source string and
-          // are revived where the manifest config is adopted, so internals only
-          // ever hold a RegExp.
-          if (
-            runtimeConfigWithoutFilePath.experimental?.nonJsBots instanceof
-            RegExp
-          ) {
-            runtimeConfigWithoutFilePath.experimental = {
-              ...runtimeConfigWithoutFilePath.experimental,
-              // @ts-expect-error: serialize the regex config into string
-              nonJsBots: serializeNonJsBots(
-                runtimeConfigWithoutFilePath.experimental.nonJsBots
-              ),
-            }
-          }
 
           const serverFilesManifest: RequiredServerFilesManifest = {
             version: 1,
