@@ -2112,10 +2112,13 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
     let is_option = field.is_option_ref();
 
     let add_name = field.prefixed_ident("add");
+    let push_name = field.prefixed_ident("push");
     let extend_name = field.prefixed_ident("extend");
     let remove_name = field.prefixed_ident("remove");
     let set_name = field.prefixed_ident("set");
     let has_name = field.suffixed_ident("contains");
+    let inflate_name = field.suffixed_ident("inflate");
+    let shrink_name = field.suffixed_ident("shrink_to_fit");
     let iter_name = field.iter_ident();
     let len_name = field.len_ident();
     let is_empty_name = field.is_empty_ident();
@@ -2125,6 +2128,43 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
         quote! { #ref_expr.is_some_and(|set| set.contains(item)) }
     } else {
         quote! { #ref_expr.contains(item) }
+    };
+
+    // Only edge sets (flat arrays that can switch to a hash table) can be inflated, and are
+    // flattened explicitly. Neither changes the contents, so no modification is tracked. A lazy set
+    // is found without creating it.
+    let edge_set_fns = if is_edge_set(field_type) {
+        let call = |method: TokenStream| {
+            if is_option {
+                let extractor = field.lazy_extractor_closure();
+                quote! {
+                    if let Some((idx, _)) = self.typed().find_lazy_ref(#extractor) {
+                        self.typed_mut().lazy_at_mut(idx, #extractor).#method();
+                    }
+                }
+            } else {
+                quote! { #mut_expr.#method() }
+            }
+        };
+        let inflate_body = call(quote! { inflate });
+        let shrink_body = call(quote! { shrink_to_fit });
+        quote! {
+            #[doc = "Switches a large set to a hash table ahead of a run of lookups. Inserts and"]
+            #[doc = "removals do this themselves. Untracked: the contents don't change."]
+            fn #inflate_name(&mut self) {
+                #check_access
+                #inflate_body
+            }
+
+            #[doc = "Flattens the set into an exactly sized array, e.g. after removing from a set"]
+            #[doc = "that nothing else flattens. Untracked: the contents don't change."]
+            fn #shrink_name(&mut self) {
+                #check_access
+                #shrink_body
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let iter_body = if is_option {
@@ -2148,6 +2188,7 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
     // For transient fields, track_modification is a no-op so skip all guards.
     let remove_body;
     let add_body;
+    let push_body;
     let set_body;
     let extend_body;
 
@@ -2157,6 +2198,9 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
         };
         add_body = quote! {
             #mut_expr.insert(item)
+        };
+        push_body = quote! {
+            #mut_expr.push(item);
         };
         set_body = if is_option {
             let unwraper = field.lazy_unwrap_closure();
@@ -2213,6 +2257,12 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
             let inserted = #mut_expr.insert(item);
             if !inserted { #undo }
             inserted
+        };
+
+        // Push: the caller guarantees the item is new, so it always changes the set.
+        push_body = quote! {
+            let _track_outcome = #track_item_outcome;
+            #mut_expr.push(item);
         };
 
         if is_option {
@@ -2327,13 +2377,20 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
         };
     }
 
-    quote! {
-        #[doc = "Check if the set contains an item"]
-        fn #has_name(&self, item: &#element_type) -> bool {
-            #check_access
-            #has_body
+    // An edge set can also take an item the caller knows is new, without a lookup.
+    let push_fn = if is_edge_set(field_type) {
+        quote! {
+            #[doc = "Add an item that isn't in the set yet, without looking it up."]
+            fn #push_name(&mut self, item: #element_type) {
+                #check_access
+                #push_body
+            }
         }
+    } else {
+        quote! {}
+    };
 
+    let add_fns = quote! {
         #[doc = "Add an item to the set."]
         #[doc = "Returns true if the item was newly added, false if it already existed."]
         #[doc = "Only tracks modification if the item is actually added."]
@@ -2343,12 +2400,26 @@ fn generate_autoset_ops(field: &FieldInfo) -> TokenStream {
             #add_body
         }
 
+        #push_fn
+
         #[doc = "Add multiple items to the set from an iterator."]
         #[doc = "Only tracks modification if at least one item is actually added."]
         fn #extend_name(&mut self, items: impl IntoIterator<Item = #element_type>) {
             #check_access
             #extend_body
         }
+    };
+
+    quote! {
+        #[doc = "Check if the set contains an item"]
+        fn #has_name(&self, item: &#element_type) -> bool {
+            #check_access
+            #has_body
+        }
+
+        #edge_set_fns
+
+        #add_fns
 
         #[doc = "Remove an item from the set."]
         #[doc = "Returns true if the item was present and removed, false if it wasn't present."]
@@ -3420,11 +3491,24 @@ fn extract_option_inner_type(ty: &Type) -> TokenStream {
     quote! { #ty }
 }
 
-/// Extract the element type `K` from `AutoSet<K>` (which is `FxHashSet<K>`)
+/// Whether the field type is an `EdgeSet<K>`.
+fn is_edge_set(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty
+        && let Some(segment) = type_path.path.segments.last()
+    {
+        segment.ident == "EdgeSet"
+    } else {
+        false
+    }
+}
+
+/// Extract the element type `K` from `AutoSet<K>` (which is `FxHashSet<K>`) or `EdgeSet<K>`
 fn extract_set_element_type(ty: &Type) -> Option<TokenStream> {
     if let Type::Path(type_path) = ty
         && let Some(segment) = type_path.path.segments.last()
-        && (segment.ident == "AutoSet" || segment.ident == "FxHashSet")
+        && (segment.ident == "AutoSet"
+            || segment.ident == "FxHashSet"
+            || segment.ident == "EdgeSet")
         && let syn::PathArguments::AngleBracketed(args) = &segment.arguments
         && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
     {

@@ -85,7 +85,7 @@ pub fn capture_all_edges(task: &TaskGuard<'_>) -> Vec<OutdatedEdge> {
                 },
             }),
     );
-    old_edges.extend(task.iter_cell_dependents_keyed().map(|(entry, key)| {
+    old_edges.extend(task.iter_keyed_cell_dependents().map(|(entry, key)| {
         OutdatedEdge::KeyedCellDependency {
             dependent: entry.task,
             cell: CellRef {
@@ -273,6 +273,13 @@ fn cleanup_old_edges_inner(
                     let mut task = ctx.task(dependent, TaskDataCategory::Data);
                     task.remove_cell_dependencies(&cell);
                     task.remove_outdated_cell_dependencies(&cell);
+                    if dependent != task_id {
+                        // Tearing down a deleted task removes the edges into it from live tasks'
+                        // sets. The removal inflated a large set and nothing else would flatten it,
+                        // so flatten it here. A completing task's own sets are flattened by its
+                        // completion.
+                        task.cell_dependencies_shrink_to_fit();
+                    }
                 }
             }
             OutdatedEdge::KeyedCellDependency {
@@ -283,7 +290,7 @@ fn cleanup_old_edges_inner(
                 // Same as above but in the `_keyed` sets.
                 {
                     let mut task = ctx.task(cell.task, TaskDataCategory::Data);
-                    task.remove_cell_dependents_keyed(&(
+                    task.remove_keyed_cell_dependent(&(
                         CellRef {
                             task: dependent,
                             cell: cell.cell,
@@ -295,6 +302,10 @@ fn cleanup_old_edges_inner(
                     let mut task = ctx.task(dependent, TaskDataCategory::Data);
                     task.remove_cell_dependencies_keyed(&(cell, key));
                     task.remove_outdated_cell_dependencies_keyed(&(cell, key));
+                    if dependent != task_id {
+                        // See `CellDependency`.
+                        task.cell_dependencies_keyed_shrink_to_fit();
+                    }
                 }
             }
             OutdatedEdge::OutputDependency {
@@ -316,6 +327,10 @@ fn cleanup_old_edges_inner(
                     let mut task = ctx.task(dependent, TaskDataCategory::Data);
                     task.remove_output_dependencies(&output_task);
                     task.remove_outdated_output_dependencies(&output_task);
+                    if dependent != task_id {
+                        // See `CellDependency`.
+                        task.output_dependencies_shrink_to_fit();
+                    }
                 }
             }
             OutdatedEdge::CollectiblesDependency(CollectiblesRef {
