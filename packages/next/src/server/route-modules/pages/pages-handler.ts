@@ -40,6 +40,7 @@ import { toResponseCacheEntry } from '../../response-cache/utils'
 import { NoFallbackError } from '../../../shared/lib/no-fallback-error.external'
 import { RedirectStatusCode } from '../../../client/components/redirect-status-code'
 import { isBot } from '../../../shared/lib/router/utils/is-bot'
+import { shouldDisableProgressiveLoading } from '../../lib/streaming-metadata'
 import { addPathPrefix } from '../../../shared/lib/router/utils/add-path-prefix'
 import { removeTrailingSlash } from '../../../shared/lib/router/utils/remove-trailing-slash'
 import { isRouteCacheOwner } from '../../lib/route-cache-key'
@@ -290,6 +291,11 @@ export const getHandler = ({
       isIsrFallback = false
     }
 
+    const disableProgressiveLoading = shouldDisableProgressiveLoading(
+      req.headers['user-agent'] || '',
+      nextConfig.experimental
+    )
+
     const tracer = getTracer()
     const isWrappedByNextServer = Boolean(
       routerServerContext?.isWrappedByNextServer
@@ -350,6 +356,7 @@ export const getHandler = ({
                   getStaticPaths,
                   getServerSideProps,
                   supportsDynamicResponse: !hasStaticProps,
+                  disableProgressiveLoading,
                   buildManifest: isFallbackError
                     ? fallbackBuildManifest
                     : buildManifest,

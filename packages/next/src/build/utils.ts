@@ -1444,6 +1444,16 @@ export async function copyTracedFiles(
     ...serverConfig,
     distDir: `./${path.relative(dir, distDir)}`,
   }
+  // RegExp configs are embedded as JSON below, so serialize them into their
+  // source string here. They are revived back into a RegExp where the
+  // standalone config is loaded.
+  if (nextConfig.experimental?.nonJsBots instanceof RegExp) {
+    nextConfig.experimental = {
+      ...nextConfig.experimental,
+      // @ts-expect-error: serialize the regex config into string
+      nonJsBots: nextConfig.experimental.nonJsBots.source,
+    }
+  }
   try {
     const packageJsonPath = path.join(distDir, '../package.json')
     const packageJsonContent = await fs.readFile(

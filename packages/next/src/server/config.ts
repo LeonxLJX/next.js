@@ -50,6 +50,7 @@ import { cloneObject } from './lib/clone-object'
 import { deepFreeze, deepFreezePlainValues } from '../shared/lib/deep-freeze'
 import { normalizeZodErrors } from '../shared/lib/zod'
 import { HTML_LIMITED_BOT_UA_RE_STRING } from '../shared/lib/router/utils/is-bot'
+import { NON_JS_BOT_UA_RE } from '../shared/lib/router/utils/non-js-bots'
 import { findDir } from '../lib/find-pages-dir'
 import { INFINITE_CACHE } from '../lib/constants'
 import { validateAndNormalizeCacheLifeProfile } from './use-cache/cache-life-profile'
@@ -1718,6 +1719,10 @@ function assignDefaultsAndValidate(
     result.htmlLimitedBots = HTML_LIMITED_BOT_UA_RE_STRING
   }
 
+  if (!result.experimental.nonJsBots) {
+    result.experimental.nonJsBots = NON_JS_BOT_UA_RE
+  }
+
   if (
     typeof result.experimental.mcpServer === 'undefined' &&
     process.env.__NEXT_EXPERIMENTAL_MCP_SERVER === 'true'
@@ -2074,6 +2079,13 @@ async function loadConfigImpl(
     const standaloneConfig = JSON.parse(
       process.env.__NEXT_PRIVATE_STANDALONE_CONFIG
     )
+    // RegExp configs cross the JSON boundary as their source string and are
+    // revived here so internals only ever hold a RegExp.
+    if (typeof standaloneConfig.experimental?.nonJsBots === 'string') {
+      standaloneConfig.experimental.nonJsBots = new RegExp(
+        standaloneConfig.experimental.nonJsBots
+      )
+    }
     // The standalone config is JSON written at build time, like the manifests.
     if (process.env.__NEXT_TEST_MODE) {
       deepFreeze(standaloneConfig)
@@ -2503,6 +2515,16 @@ function enforceExperimentalFeatures(
       (isDefaultConfig && !config.cacheComponents))
   ) {
     config.cacheComponents = true
+  }
+
+  // TODO: Remove this once we've made disableProgressiveLoadingForNonJsBots the
+  // default.
+  if (
+    process.env.__NEXT_CACHE_COMPONENTS === 'true' &&
+    // We do respect an explicit value in the user config.
+    config.experimental.disableProgressiveLoadingForNonJsBots === undefined
+  ) {
+    config.experimental.disableProgressiveLoadingForNonJsBots = true
   }
 
   if (process.env.__NEXT_PARTIAL_PREFETCHING === 'true') {

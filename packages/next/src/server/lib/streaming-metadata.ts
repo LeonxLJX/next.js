@@ -2,6 +2,7 @@ import {
   HTML_LIMITED_BOT_UA_RE_STRING,
   isOversizedUserAgent,
 } from '../../shared/lib/router/utils/is-bot'
+import { NON_JS_BOT_UA_RE } from '../../shared/lib/router/utils/non-js-bots'
 
 let cachedPattern: string | undefined
 let cachedRegex: RegExp | undefined
@@ -25,4 +26,23 @@ export function shouldServeStreamingMetadata(
     return false
   }
   return true
+}
+
+export function shouldDisableProgressiveLoading(
+  userAgent: string,
+  experimental: {
+    disableProgressiveLoadingForNonJsBots?: boolean
+    nonJsBots?: RegExp
+  }
+): boolean {
+  if (!experimental.disableProgressiveLoadingForNonJsBots) {
+    return false
+  }
+  // No real UA string exceeds this bound, so oversized UAs are not bots we need
+  // to identify; skip the (possibly user-configured) regex on them entirely.
+  if (!userAgent || isOversizedUserAgent(userAgent)) {
+    return false
+  }
+  const nonJsBots = experimental.nonJsBots ?? NON_JS_BOT_UA_RE
+  return nonJsBots.test(userAgent)
 }

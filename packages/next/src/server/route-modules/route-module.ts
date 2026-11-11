@@ -637,6 +637,14 @@ export abstract class RouteModule<
       throw new Error("Invariant: nextConfig couldn't be loaded")
     }
 
+    // RegExp configs cross the JSON manifest as their source string and are
+    // revived here so internals only ever hold a RegExp.
+    if (typeof nextConfig.experimental?.nonJsBots === 'string') {
+      nextConfig.experimental.nonJsBots = new RegExp(
+        nextConfig.experimental.nonJsBots
+      )
+    }
+
     let deploymentId
     if (nextConfig.experimental?.runtimeServerDeploymentId) {
       if (!process.env.NEXT_DEPLOYMENT_ID) {

@@ -2091,6 +2091,21 @@ export default async function build(
           let runtimeConfigWithoutFilePath = { ...runtimeConfig }
           delete (runtimeConfigWithoutFilePath as NextConfigComplete).configFile
 
+          // RegExp configs cross this JSON manifest as their source string and
+          // are revived where the manifest config is adopted, so internals only
+          // ever hold a RegExp.
+          if (
+            runtimeConfigWithoutFilePath.experimental?.nonJsBots instanceof
+            RegExp
+          ) {
+            runtimeConfigWithoutFilePath.experimental = {
+              ...runtimeConfigWithoutFilePath.experimental,
+              // @ts-expect-error: serialize the regex config into string
+              nonJsBots:
+                runtimeConfigWithoutFilePath.experimental.nonJsBots.source,
+            }
+          }
+
           const serverFilesManifest: RequiredServerFilesManifest = {
             version: 1,
             config: {
