@@ -24,6 +24,7 @@ import { existsSync, promises as fs } from 'fs'
 import os from 'os'
 import { getNextBuildDebuggerPortOffset, Worker } from '../lib/worker'
 import { defaultConfig, getNextConfigRuntime } from '../server/config-shared'
+import { serializeNonJsBots } from '../shared/lib/router/utils/non-js-bots'
 import devalue from 'next/dist/compiled/devalue'
 import findUp from 'next/dist/compiled/find-up'
 import { nanoid } from 'next/dist/compiled/nanoid/index.cjs'
@@ -2101,8 +2102,9 @@ export default async function build(
             runtimeConfigWithoutFilePath.experimental = {
               ...runtimeConfigWithoutFilePath.experimental,
               // @ts-expect-error: serialize the regex config into string
-              nonJsBots:
-                runtimeConfigWithoutFilePath.experimental.nonJsBots.source,
+              nonJsBots: serializeNonJsBots(
+                runtimeConfigWithoutFilePath.experimental.nonJsBots
+              ),
             }
           }
 

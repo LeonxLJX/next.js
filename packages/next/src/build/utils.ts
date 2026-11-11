@@ -3,6 +3,7 @@ import type {
   NextConfigRuntime,
 } from '../server/config-shared'
 import type { AssetBinding } from './webpack/loaders/get-module-build-info'
+import { serializeNonJsBots } from '../shared/lib/router/utils/non-js-bots'
 import type { ServerRuntime } from '../types'
 import type { BuildManifest } from '../server/get-page-files'
 import {
@@ -1451,7 +1452,7 @@ export async function copyTracedFiles(
     nextConfig.experimental = {
       ...nextConfig.experimental,
       // @ts-expect-error: serialize the regex config into string
-      nonJsBots: nextConfig.experimental.nonJsBots.source,
+      nonJsBots: serializeNonJsBots(nextConfig.experimental.nonJsBots),
     }
   }
   try {

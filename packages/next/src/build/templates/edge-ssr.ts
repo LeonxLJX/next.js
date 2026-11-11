@@ -153,7 +153,7 @@ async function requestHandler(
       page: srcPage,
       supportsDynamicResponse: true,
       disableProgressiveLoading: shouldDisableProgressiveLoading(
-        req.headers.get('user-agent') ?? '',
+        req.headers.get('user-agent'),
         nextConfig.experimental
       ),
       Component: pageMod.Component,

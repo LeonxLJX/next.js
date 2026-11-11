@@ -1,4 +1,5 @@
 import { nextTestSetup } from 'e2e-utils'
+import { gate } from 'next-test-utils'
 import cheerio from 'cheerio'
 
 describe('metadata-streaming-edge-bots', () => {
@@ -49,7 +50,13 @@ describe('metadata-streaming-edge-bots', () => {
       'respects metadata streaming policy for %s',
       async (userAgent, shouldBlock) => {
         const $ = await readInitialHead(pathname, userAgent)
-        if (shouldBlock) {
+        // With progressive loading disabled for non-JS bots, their render
+        // waits for every boundary, so metadata resolves before the head is
+        // sent and lands in it.
+        const blocksForNonJsBot =
+          (await gate((c) => c.disableProgressiveLoadingForNonJsBots)) &&
+          ['ChatGPT-User', 'GPTBot', 'ClaudeBot'].includes(userAgent)
+        if (shouldBlock || blocksForNonJsBot) {
           expect($('head title').text()).toBe('Edge metadata title')
           expect($('head meta[name="description"]').attr('content')).toBe(
             'Edge metadata description'

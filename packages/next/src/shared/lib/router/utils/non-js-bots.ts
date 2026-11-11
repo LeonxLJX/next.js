@@ -15,3 +15,20 @@
 //   reveal.
 export const NON_JS_BOT_UA_RE =
   /GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-User|Claude-SearchBot|Claude-Web|anthropic-ai|PerplexityBot|Perplexity-User|CCBot|Bytespider|Amazonbot|Amzn-User|Meta-ExternalAgent|Meta-ExternalFetcher|FacebookBot|meta-webindexer|cohere-training-data-crawler|cohere-ai|MistralAI|DeepSeekBot|MoonshotBot|KimiBot|QwenBot|TongyiBot|ERNIEBot|Google-CloudVertexBot|Gemini-Deep-Research|GoogleAgent-URLContext|Google-NotebookLM|GrokBot|xAI-Grok|YouBot|DuckAssistBot|Ai2Bot|Diffbot/i
+
+// RegExp configs cross JSON manifests as a string; these helpers keep the
+// flags (unlike `.source` + `new RegExp(source)`, which drops them).
+export function serializeNonJsBots(nonJsBots: RegExp): string {
+  return String(nonJsBots)
+}
+
+export function reviveNonJsBots(value: unknown): RegExp | undefined {
+  if (value instanceof RegExp) {
+    return value
+  }
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const match = /^\/(.*)\/([a-z]*)$/.exec(value)
+  return match ? new RegExp(match[1], match[2]) : new RegExp(value)
+}

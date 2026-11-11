@@ -29,7 +29,7 @@ export function shouldServeStreamingMetadata(
 }
 
 export function shouldDisableProgressiveLoading(
-  userAgent: string,
+  userAgent: string | null | undefined,
   experimental: {
     disableProgressiveLoadingForNonJsBots?: boolean
     nonJsBots?: RegExp

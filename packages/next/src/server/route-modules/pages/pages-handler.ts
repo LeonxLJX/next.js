@@ -281,20 +281,28 @@ export const getHandler = ({
       }
     }
 
+    const disableProgressiveLoading = shouldDisableProgressiveLoading(
+      req.headers['user-agent'],
+      nextConfig.experimental
+    )
+
     // When serving a bot request, we want to serve a blocking render and not
     // the prerendered page. This ensures that the correct content is served
-    // to the bot in the head.
+    // to the bot in the head. Non-JS bots never receive prerendered content:
+    // without a cache key the request renders dynamically and the response is
+    // not written to the shared cache.
     if (
-      (isIsrFallback && isBot(req.headers['user-agent'] || '')) ||
+      (isIsrFallback &&
+        (isBot(req.headers['user-agent'] || '') ||
+          disableProgressiveLoading)) ||
       isMinimalMode
     ) {
       isIsrFallback = false
     }
 
-    const disableProgressiveLoading = shouldDisableProgressiveLoading(
-      req.headers['user-agent'] || '',
-      nextConfig.experimental
-    )
+    if (disableProgressiveLoading) {
+      cacheKey = null
+    }
 
     const tracer = getTracer()
     const isWrappedByNextServer = Boolean(

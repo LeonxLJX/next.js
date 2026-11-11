@@ -50,7 +50,10 @@ import { cloneObject } from './lib/clone-object'
 import { deepFreeze, deepFreezePlainValues } from '../shared/lib/deep-freeze'
 import { normalizeZodErrors } from '../shared/lib/zod'
 import { HTML_LIMITED_BOT_UA_RE_STRING } from '../shared/lib/router/utils/is-bot'
-import { NON_JS_BOT_UA_RE } from '../shared/lib/router/utils/non-js-bots'
+import {
+  NON_JS_BOT_UA_RE,
+  reviveNonJsBots,
+} from '../shared/lib/router/utils/non-js-bots'
 import { findDir } from '../lib/find-pages-dir'
 import { INFINITE_CACHE } from '../lib/constants'
 import { validateAndNormalizeCacheLifeProfile } from './use-cache/cache-life-profile'
@@ -2079,10 +2082,10 @@ async function loadConfigImpl(
     const standaloneConfig = JSON.parse(
       process.env.__NEXT_PRIVATE_STANDALONE_CONFIG
     )
-    // RegExp configs cross the JSON boundary as their source string and are
-    // revived here so internals only ever hold a RegExp.
+    // RegExp configs cross the JSON boundary as a string and are revived
+    // here so internals only ever hold a RegExp.
     if (typeof standaloneConfig.experimental?.nonJsBots === 'string') {
-      standaloneConfig.experimental.nonJsBots = new RegExp(
+      standaloneConfig.experimental.nonJsBots = reviveNonJsBots(
         standaloneConfig.experimental.nonJsBots
       )
     }

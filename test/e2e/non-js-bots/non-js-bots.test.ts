@@ -57,8 +57,11 @@ describe('non-js-bots', () => {
     })
   })
 
-  describe('/static-large-boundary (prerendered)', () => {
-    it('forces a dynamic render for non-JS bots', async () => {
+  // Prerendered routes are served from the CDN on Vercel without invoking a
+  // function, so the bypass is only observable on a self-hosted server.
+  // @force-gate !deploy
+  describe('prerendered routes', () => {
+    it('forces a dynamic render for non-JS bots (app)', async () => {
       const { res, html } = await fetchHTML(
         '/static-large-boundary',
         CLAUDE_BOT_UA
@@ -73,8 +76,22 @@ describe('non-js-bots', () => {
       expect(res.headers.get('cache-control') ?? '').not.toContain('s-maxage')
     })
 
-    it('serves the progressively chunked document to regular browsers', async () => {
+    it('serves the progressively chunked document to regular browsers (app)', async () => {
       const { html } = await fetchHTML('/static-large-boundary')
+      expect(html).toMatch(HIDDEN_OUTLINE_RE)
+      expect(html).toContain('$RC(')
+    })
+
+    it('forces a dynamic render for non-JS bots (pages)', async () => {
+      const { html } = await fetchHTML('/static-large', CLAUDE_BOT_UA)
+      expect(html).not.toMatch(HIDDEN_OUTLINE_RE)
+      expect(html).not.toContain('$RC(')
+      expect(html).toContain('marker-pages-start')
+      expect(html).toContain('marker-pages-end')
+    })
+
+    it('serves the progressively chunked document to regular browsers (pages)', async () => {
+      const { html } = await fetchHTML('/static-large')
       expect(html).toMatch(HIDDEN_OUTLINE_RE)
       expect(html).toContain('$RC(')
     })

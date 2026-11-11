@@ -13,6 +13,7 @@ import type {
 } from '../../build'
 import type { DevRoutesManifest } from '../lib/router-utils/setup-dev-bundler'
 import type { RouteDefinition } from '../route-definitions/route-definition'
+import { reviveNonJsBots } from '../../shared/lib/router/utils/non-js-bots'
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
 import {
   BUILD_ID_FILE,
@@ -637,10 +638,10 @@ export abstract class RouteModule<
       throw new Error("Invariant: nextConfig couldn't be loaded")
     }
 
-    // RegExp configs cross the JSON manifest as their source string and are
-    // revived here so internals only ever hold a RegExp.
+    // RegExp configs cross the JSON manifest as a string and are revived
+    // here so internals only ever hold a RegExp.
     if (typeof nextConfig.experimental?.nonJsBots === 'string') {
-      nextConfig.experimental.nonJsBots = new RegExp(
+      nextConfig.experimental.nonJsBots = reviveNonJsBots(
         nextConfig.experimental.nonJsBots
       )
     }
@@ -888,8 +889,20 @@ export abstract class RouteModule<
     const { basePath, i18n, rewrites } = routesManifest
 
     const routerServerContext = this.getRouterServerContext(req)
-    const nextConfig =
+    let nextConfig =
       routerServerContext?.nextConfig || serverFilesManifest?.config
+
+    // RegExp configs cross the JSON manifest as a string and are revived
+    // here so internals only ever hold a RegExp.
+    if (nextConfig && typeof nextConfig.experimental?.nonJsBots === 'string') {
+      nextConfig = {
+        ...nextConfig,
+        experimental: {
+          ...nextConfig.experimental,
+          nonJsBots: reviveNonJsBots(nextConfig.experimental.nonJsBots),
+        },
+      }
+    }
 
     // Injected in base-server.ts
     const protocol = req.headers['x-forwarded-proto']?.includes('https')
