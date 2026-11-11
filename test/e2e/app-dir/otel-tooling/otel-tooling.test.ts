@@ -18,7 +18,13 @@ type ExportedSpan = {
   attributes: Record<string, unknown>
 }
 type Message = {
-  kind: 'register' | 'spans' | 'metrics'
+  kind:
+    | 'config'
+    | 'instrumentation-load'
+    | 'register'
+    | 'provider'
+    | 'spans'
+    | 'metrics'
   pid: number
   phase?: string
   installed?: boolean
@@ -104,22 +110,46 @@ const dependencies = {
   '@opentelemetry/sdk-metrics': '2.12.0',
 }
 
-const providerCases = (
+type ProviderCase = {
+  name: string
+  sampler: string
+  distDir: string
+  otelInBuild?: boolean
+  preRegistered?: boolean
+  withInstrumentation?: boolean
+}
+
+const providerCases: ProviderCase[] = (
   isNextDev ? ['.next', 'otel-output'] : ['otel-output']
 ).flatMap((distDir) =>
   ['on', 'off'].map((sampler) => ({
     name: `${sampler} sampler, ${distDir} output`,
     sampler,
     distDir,
-    toolingEnabled: true as boolean | undefined,
+    otelInBuild: true,
   }))
 )
-for (const toolingEnabled of [false, undefined]) {
+for (const otelInBuild of [false, undefined]) {
   providerCases.push({
-    name: `${toolingEnabled === false ? 'disabled' : 'default'} tooling`,
+    name: `${otelInBuild === false ? 'disabled' : 'default'} build registration`,
     sampler: 'on',
     distDir: 'otel-output',
-    toolingEnabled,
+    otelInBuild,
+  })
+}
+providerCases.push({
+  name: 'without instrumentation',
+  sampler: 'on',
+  distDir: 'otel-output',
+  withInstrumentation: false,
+})
+if (!isNextDev) {
+  providerCases.push({
+    name: 'pre-registered provider with build registration disabled',
+    sampler: 'on',
+    distDir: 'otel-output',
+    otelInBuild: false,
+    preRegistered: true,
   })
 }
 
@@ -128,7 +158,13 @@ for (const toolingEnabled of [false, undefined]) {
 describe('experimental tooling OTel', () => {
   describe.each(providerCases)(
     '$name',
-    ({ sampler, distDir, toolingEnabled }) => {
+    ({
+      sampler,
+      distDir,
+      otelInBuild,
+      preRegistered = false,
+      withInstrumentation = true,
+    }) => {
       let startCommand: string | undefined
       if (isNextDev) {
         const bundlerFlag = process.env.IS_WEBPACK_TEST
@@ -145,23 +181,25 @@ describe('experimental tooling OTel', () => {
           ...(isNextDev &&
           distDir === '.next' &&
           sampler === 'on' &&
-          toolingEnabled
+          otelInBuild
             ? {}
             : { NEXT_EXIT_TIMEOUT_MS: '30000' }),
           TOOLING_SAMPLER: sampler,
+          ...(preRegistered ? { TOOLING_PRE_REGISTER: '1' } : {}),
         },
       })
       const messages = () => readMessages(next.cliOutput)
 
       beforeAll(async () => {
-        if (toolingEnabled !== true) {
+        if (otelInBuild !== true) {
           await next.patchFile('next.config.ts', (source) =>
             source.replace(
-              'devAndBuildOtel: true',
-              `devAndBuildOtel: ${toolingEnabled}`
+              'otelInBuild: true',
+              otelInBuild === undefined ? '' : `otelInBuild: ${otelInBuild}`
             )
           )
         }
+        if (!withInstrumentation) await next.deleteFile('instrumentation.ts')
         if (isNextDev && distDir === '.next') {
           // Keep the default legacy path and the existing custom-dev path covered.
           await next.patchFile('next.config.ts', (source) =>
@@ -219,7 +257,7 @@ describe('experimental tooling OTel', () => {
           await browser.close()
         }
         const editFinishedAt = Date.now()
-        if (isNextDev && sampler === 'on' && toolingEnabled) {
+        if (isNextDev && sampler === 'on' && withInstrumentation) {
           await retry(async () => {
             const exported = messages().flatMap(
               (message) => message.spans ?? []
@@ -326,14 +364,49 @@ describe('experimental tooling OTel', () => {
         const registrations = messages().filter(
           (message) => message.kind === 'register'
         )
-        if (!toolingEnabled) {
-          expect(registrations).toHaveLength(1)
-          expect(registrations[0]).toMatchObject({
-            installed: true,
-            registrations: 1,
-          })
-          if (!isNextDev)
-            expect(registrations[0].phase).not.toBe('phase-production-build')
+        const coordinator = messages().find(
+          (message) =>
+            message.kind === 'config' &&
+            message.phase === 'phase-production-build'
+        )
+        if (!isNextDev) {
+          expect(coordinator).toBeDefined()
+          if (otelInBuild !== true) {
+            expect(
+              messages().filter(
+                (message) =>
+                  message.pid === coordinator!.pid &&
+                  ['instrumentation-load', 'register'].includes(message.kind)
+              )
+            ).toEqual([])
+            expect(
+              registrations
+                .filter((message) => message.phase === 'phase-production-build')
+                .every((message) => message.pid !== coordinator!.pid)
+            ).toBe(true)
+          }
+        }
+        if (
+          !withInstrumentation ||
+          (!isNextDev && !preRegistered && otelInBuild !== true)
+        ) {
+          if (!withInstrumentation) {
+            expect(registrations).toEqual([])
+            expect(
+              messages().filter(
+                (message) => message.kind === 'instrumentation-load'
+              )
+            ).toEqual([])
+          } else {
+            expect(registrations.length).toBeGreaterThan(0)
+            for (const registration of registrations) {
+              expect(registration).toMatchObject({
+                installed: true,
+                registrations: 1,
+              })
+              expect(registration.pid).not.toBe(coordinator!.pid)
+            }
+          }
           expect(
             messages()
               .flatMap((message) => message.spans ?? [])
@@ -347,16 +420,30 @@ describe('experimental tooling OTel', () => {
           return
         }
         expect(registrations).not.toHaveLength(0)
-        const registration = registrations[0]
+        if (isNextDev) expect(registrations).toHaveLength(1)
+        const registration = isNextDev
+          ? registrations[0]
+          : messages().find(
+              (message) =>
+                message.pid === coordinator!.pid &&
+                message.kind === (preRegistered ? 'provider' : 'register')
+            )!
+        expect(registration).toBeDefined()
         expect(
           messages()
-            .filter((message) => message.pid === registration.pid)
+            .filter(
+              (message) =>
+                message.pid === registration.pid &&
+                ['provider', 'register', 'spans', 'metrics'].includes(
+                  message.kind
+                )
+            )
             .every((message) => message.identityStable)
         ).toBe(true)
         expect(registration).toMatchObject({
           installed: true,
           metricsInstalled: true,
-          registrations: 1,
+          registrations: preRegistered ? 0 : 1,
         })
         const exportedMetrics = messages().flatMap(
           (message) => message.metrics ?? []
@@ -480,7 +567,7 @@ describe('experimental tooling OTel', () => {
         const early = tooling.filter(
           (span) => milliseconds(span.endTime) <= registration.time!
         )
-        expect(early.length).toBeGreaterThan(0)
+        if (!preRegistered) expect(early.length).toBeGreaterThan(0)
         expect(
           new Set(tooling.map((span) => span.attributes['next.tooling.id']))
             .size
@@ -662,8 +749,8 @@ describe('experimental tooling OTel', () => {
     it('retains both parallel worker results locally and in the application provider', async () => {
       await next.patchFile('next.config.ts', (source) =>
         source.replace(
-          'devAndBuildOtel: true',
-          'devAndBuildOtel: true, webpackBuildWorker: true, parallelServerCompiles: true, parallelServerBuildTraces: true'
+          'otelInBuild: true',
+          'otelInBuild: true, webpackBuildWorker: true, parallelServerCompiles: true, parallelServerBuildTraces: true'
         )
       )
       await next.patchFile(
@@ -738,8 +825,8 @@ describe('experimental tooling OTel', () => {
             "distDir: 'otel-output', webpack() { throw new Error('tooling-webpack-setup-failure') }"
           )
           .replace(
-            'devAndBuildOtel: true',
-            'devAndBuildOtel: true, webpackBuildWorker: false'
+            'otelInBuild: true',
+            'otelInBuild: true, webpackBuildWorker: false'
           )
       )
       const { exitCode, cliOutput } = await next.build()
@@ -841,8 +928,8 @@ describe('experimental tooling OTel', () => {
           // controlled error path here rather than promising crash-safe export.
           await next.patchFile('next.config.ts', (source) =>
             source.replace(
-              'devAndBuildOtel: true',
-              'devAndBuildOtel: true, prerenderEarlyExit: false'
+              'otelInBuild: true',
+              'otelInBuild: true, prerenderEarlyExit: false'
             )
           )
           await next.patchFile(
@@ -863,7 +950,9 @@ describe('experimental tooling OTel', () => {
           existsSync(join(next.testDir, 'stale-instrumentation-ran'))
         ).toBe(false)
         if (phase === 'before') {
-          expect(messages()).toEqual([])
+          expect(
+            messages().filter((message) => message.kind !== 'config')
+          ).toEqual([])
         } else {
           expect(
             messages().filter((message) => message.kind === 'register')

@@ -50,12 +50,11 @@ import type { NextServer } from '../next'
 import { durationToString } from '../../build/duration-to-string'
 import { isCI } from '../ci-info'
 import type { Span } from '@opentelemetry/api'
-import { getTracer } from './trace/tracer'
 import { ToolingSpan } from './trace/constants'
-import { isToolingReportingEnabled } from '../../trace/trace'
 import {
   createLocalSpan,
   getToolingSpanSource,
+  traceLocalSpan,
 } from './trace/local-span-recorder'
 
 const debug = setupDebug('next:start-server')
@@ -69,9 +68,9 @@ function finalizeDevSession(reason: string) {
   devServerSessionSpan?.setAttribute('exit.reason', reason)
   devServerSessionSpan?.end()
   flushAllTraces()
-  if (isToolingReportingEnabled()) {
+  if (devServerSessionSpan) {
     const { closeReporting } =
-      require('../../trace/otel') as typeof import('../../trace/otel')
+      require('./trace/local-span-replay.node') as typeof import('./trace/local-span-replay.node')
     closeReporting()
   }
 }
@@ -294,6 +293,7 @@ export async function startServer(
         )
         createLocalSpan({
           name: 'server-restart-close-to-memory-threshold',
+          reportToOtel: true,
           attributes: {
             'memory.heapSizeLimit': String(memoryRestartStats.heap_size_limit),
             'memory.heapUsed': String(memoryRestartStats.used_heap_size),
@@ -717,21 +717,25 @@ if (process.env.NEXT_PRIVATE_WORKER && process.send) {
       initializeTraceState({
         lastId: Number(process.env.NEXT_PRIVATE_TRACE_LAST_ID ?? 0),
       })
-      devServerSessionSpan = getTracer().startSpan(
-        ToolingSpan.devServerSession,
+      devServerSessionSpan = createLocalSpan({
+        name: ToolingSpan.devServerSession,
+        reportToOtel: true,
+        reportingRoot: true,
+        parent: null,
+        monotonicStartTime: processStart,
+        wallStartTimeMs: processWallStart,
+        attributes: {
+          ...enabledFeaturesFromParent,
+          ...rageRestartAttrsFromParent,
+        },
+      })
+      const result = await traceLocalSpan(
         {
-          parent: null,
-          monotonicStartTime: processStart,
-          wallStartTimeMs: processWallStart,
-          attributes: {
-            ...enabledFeaturesFromParent,
-            ...rageRestartAttrsFromParent,
-          },
-        }
-      )
-      const result = await getTracer().trace(
-        ToolingSpan.startDevServer,
-        {
+          name: ToolingSpan.startDevServer,
+          reportingRoot: !devServerSessionSpan,
+          reportToOtel: true,
+          recordToInsights: true,
+          scope: true,
           parent: devServerSessionSpan,
           attributes: {
             cpus: String(os.availableParallelism()),
@@ -758,20 +762,18 @@ if (process.env.NEXT_PRIVATE_WORKER && process.send) {
             'memory.heapTotal': String(memoryUsage.heapTotal),
             'memory.heapUsed': String(memoryUsage.heapUsed),
           })
-          if (isToolingReportingEnabled()) {
-            const { getToolingSessionAttributes } =
-              require('../../trace/session') as typeof import('../../trace/session')
-            const { traceGlobals } =
-              require('../../trace/shared') as typeof import('../../trace/shared')
-            const attributes = getToolingSessionAttributes(
-              msg.nextWorkerOptions.dir,
-              'dev',
-              !!process.env.TURBOPACK,
-              traceGlobals.get('telemetry')
-            )
-            span!.setAttributes(attributes)
-            devServerSessionSpan!.setAttributes(attributes)
-          }
+          const { getToolingSessionAttributes } =
+            require('../../trace/session') as typeof import('../../trace/session')
+          const { traceGlobals } =
+            require('../../trace/shared') as typeof import('../../trace/shared')
+          const attributes = getToolingSessionAttributes(
+            msg.nextWorkerOptions.dir,
+            'dev',
+            !!process.env.TURBOPACK,
+            traceGlobals.get('telemetry')
+          )
+          span!.setAttributes(attributes)
+          devServerSessionSpan!.setAttributes(attributes)
           return started
         }
       )

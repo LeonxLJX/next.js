@@ -36,6 +36,10 @@ function send(body: Record<string, unknown>) {
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
   registrations++
+  installProvider('register')
+}
+
+export function installProvider(kind: 'register' | 'provider' = 'provider') {
   const exporter: SpanExporter = {
     export(spans, callback) {
       send({
@@ -111,7 +115,7 @@ export async function register() {
   const metricsInstalled = metrics.setGlobalMeterProvider(meterProvider)
   registeredProvider = trace.getTracerProvider()
   send({
-    kind: 'register',
+    kind,
     pid: process.pid,
     phase: process.env.NEXT_PHASE,
     installed,

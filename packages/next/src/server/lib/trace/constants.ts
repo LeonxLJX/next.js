@@ -142,8 +142,6 @@ enum NextSpan {
   request = 'Next.request',
 }
 
-// Tooling producers select these coarse operations explicitly. Fine-grained
-// transforms and imported observations use the local recorder, not this lane.
 enum ToolingSpan {
   nextBuild = 'next-build',
   runWebpack = 'run-webpack',
@@ -163,12 +161,7 @@ enum ToolingSpan {
   compilePath = 'compile-path',
 }
 
-export const ToolingSpanTypes: ReadonlySet<string> = new Set(
-  Object.values(ToolingSpan)
-)
-
 type SpanTypes =
-  | `${ToolingSpan}`
   | `${BaseServerSpan}`
   | `${LoadComponentsSpan}`
   | `${InstrumentationSpan}`
@@ -186,32 +179,6 @@ type SpanTypes =
   | `${ResolveMetadataSpan}`
   | `${MiddlewareSpan}`
   | `${NextSpan}`
-
-// This list is used to filter out spans that are not relevant to the user
-export const NextVanillaSpanAllowlist = new Set([
-  MiddlewareSpan.execute,
-  NextSpan.request,
-  BaseServerSpan.handleRequest,
-  RenderSpan.getServerSideProps,
-  RenderSpan.getStaticProps,
-  AppRenderSpan.fetch,
-  AppRenderSpan.getBodyResult,
-  LoadComponentsSpan.loadRouteModule,
-  RenderSpan.renderDocument,
-  NodeSpan.runHandler,
-  AppRouteRouteHandlersSpan.runHandler,
-  AppRouteRouteModuleSpan.loadUserland,
-  RouteModuleSpan.prepare,
-  InstrumentationSpan.loadModule,
-  InstrumentationSpan.register,
-  ResolveMetadataSpan.generateMetadata,
-  ResolveMetadataSpan.generateViewport,
-  NextNodeServerSpan.createComponentTree,
-  NextNodeServerSpan.findPageComponents,
-  NextNodeServerSpan.getLayoutOrPageModule,
-  NextNodeServerSpan.startResponse,
-  NextNodeServerSpan.clientComponentLoading,
-])
 
 // These Spans are allowed to be always logged
 // when the otel log prefix env is set

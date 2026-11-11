@@ -49,9 +49,11 @@ import { Telemetry } from '../../telemetry/storage'
 import { durationToString, hrtimeToSeconds } from '../duration-to-string'
 import { installBindings } from '../swc/install-bindings'
 import { Bundler } from '../../lib/bundler'
-import { getTracer } from '../../server/lib/trace/tracer'
 import { ToolingSpan } from '../../server/lib/trace/constants'
-import { traceLocalSpan } from '../../server/lib/trace/local-span-recorder'
+import {
+  traceLocalSpan,
+  createLocalSpan,
+} from '../../server/lib/trace/local-span-recorder'
 
 const debug = origDebug('next:build:webpack-build')
 
@@ -105,6 +107,7 @@ export async function webpackBuildImpl(
     const entrypoints = await traceLocalSpan(
       {
         name: 'create-entrypoints',
+        reportToOtel: true,
         parent: nextBuildSpan,
       },
       () =>
@@ -344,9 +347,14 @@ export async function webpackBuildImpl(
   const {
     clientConfig: clientWebpackConfig,
     serverConfig: serverWebpackConfig,
-  } = await getTracer().trace(
-    ToolingSpan.runWebpackCompiler,
-    { parent: nextBuildSpan },
+  } = await traceLocalSpan(
+    {
+      name: ToolingSpan.runWebpackCompiler,
+      reportToOtel: true,
+      recordToInsights: true,
+      scope: true,
+      parent: nextBuildSpan,
+    },
     runWebpackCompiler
   )
   result = traceLocalSpan(
@@ -470,10 +478,14 @@ export async function workerMain(workerData: {
     }
   ))
   await installBindings(config.experimental?.useWasmBinary)
-  NextBuildContext.nextBuildSpan = getTracer().startSpan(
-    ToolingSpan.workerMain,
-    { spanName: `worker-main-${workerData.compilerName}` }
-  )
+  NextBuildContext.nextBuildSpan = createLocalSpan({
+    name: `worker-main-${workerData.compilerName}`,
+    reportToOtel: true,
+    recordToInsights: true,
+    attributes: {
+      'next.span_type': ToolingSpan.workerMain,
+    },
+  })
 
   const result = await webpackBuildImpl(workerData.compilerName)
   const { entriesTrace, chunksTrace } = result.buildTraceContext ?? {}

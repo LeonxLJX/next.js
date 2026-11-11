@@ -71,6 +71,7 @@ export function traceMemoryUsage(
   )
   createLocalSpan({
     name: 'memory-usage',
+    reportToOtel: true,
     parent: parentSpan,
     attributes: tracedMemoryUsageAsStrings,
   }).end()

@@ -12,6 +12,7 @@ export default function reportToSocket(span: Span) {
       startTime: span.startTime,
       endTime: span.state.endTime,
       spanName: span.name,
+      reportToOtel: span.reportToOtel,
       attributes: span.attributes,
     })
   )

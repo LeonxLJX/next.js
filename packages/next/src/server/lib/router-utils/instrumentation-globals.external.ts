@@ -9,7 +9,6 @@ import { interopDefault } from '../../../lib/interop-default'
 import { afterRegistration as extendInstrumentationAfterRegistration } from './instrumentation-node-extensions'
 import { getTracer, SpanStatusCode } from '../trace/tracer'
 import { InstrumentationSpan } from '../trace/constants'
-import { isToolingReportingEnabled } from '../../../trace/trace'
 
 let cachedInstrumentationModule: InstrumentationModule
 let instrumentationModuleLoadTiming: InstrumentationSpanTiming | undefined
@@ -39,7 +38,7 @@ function traceBackdatedInstrumentationSpan({
 }: InstrumentationLifecycleSpan) {
   getTracer().trace(
     type,
-    { spanName, startTime, endTime },
+    { reportToOtel: true, spanName, startTime, endTime },
     error === undefined
       ? () => undefined
       : (span) => {
@@ -198,48 +197,47 @@ async function registerInstrumentation(
       }
     }
   }
-  if (
-    isToolingReportingEnabled() &&
-    (process.env.__NEXT_DEV_SERVER || forToolingBuild)
-  ) {
-    const { enableReporting } =
-      require('../../../trace/otel') as typeof import('../../../trace/otel')
-    enableReporting()
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    return
+  } else {
+    if (process.env.__NEXT_DEV_SERVER) {
+      const { enableReporting } =
+        require('../trace/local-span-replay.node') as typeof import('../trace/local-span-replay.node')
+      enableReporting()
+    }
   }
 }
 
 let toolingBuildRegistration: Promise<void> | undefined
 /** Coordinator-only: register this build's entry or drain without a hook. */
-export function registerToolingBuildInstrumentation(
+export async function registerToolingBuildInstrumentation(
   projectDir: string,
   distDir: string,
-  hasInstrumentationHook: boolean
+  shouldRegisterHook: boolean
 ) {
-  if (!isToolingReportingEnabled()) return
-  toolingBuildRegistration ??= (async () => {
-    const previousRuntime = process.env.NEXT_RUNTIME
-    process.env.NEXT_RUNTIME = 'nodejs'
-    try {
-      if (hasInstrumentationHook) {
+  // cleanDistDir:false can leave an old emitted entry behind. Only the
+  // current build's detected source entry may register application code.
+  if (shouldRegisterHook) {
+    toolingBuildRegistration ??= (async () => {
+      const previousRuntime = process.env.NEXT_RUNTIME
+      process.env.NEXT_RUNTIME = 'nodejs'
+      try {
         await registerInstrumentation(
           projectDir,
           path.relative(projectDir, distDir),
           undefined,
           true
         )
-      } else {
-        // cleanDistDir:false can leave an old emitted entry behind. Only the
-        // current build's detected source entry may register application code.
-        const { enableReporting } =
-          require('../../../trace/otel') as typeof import('../../../trace/otel')
-        enableReporting()
+      } finally {
+        if (previousRuntime === undefined) delete process.env.NEXT_RUNTIME
+        else process.env.NEXT_RUNTIME = previousRuntime
       }
-    } finally {
-      if (previousRuntime === undefined) delete process.env.NEXT_RUNTIME
-      else process.env.NEXT_RUNTIME = previousRuntime
-    }
-  })()
-  return toolingBuildRegistration
+    })()
+    await toolingBuildRegistration
+  }
+  const { enableReporting } =
+    require('../trace/local-span-replay.node') as typeof import('../trace/local-span-replay.node')
+  enableReporting()
 }
 
 export async function instrumentationOnRequestError(

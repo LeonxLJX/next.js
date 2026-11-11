@@ -133,13 +133,10 @@ import createSpinner, { finishSpinner } from './spinner'
 import {
   exportTraceState,
   flushAllTraces,
-  initializeTraceState,
   recordTraceEvents,
   setGlobal,
 } from '../trace'
-import { startToolingSpanReporting } from '../trace/trace'
 import type { Span } from '@opentelemetry/api'
-import { getTracer } from '../server/lib/trace/tracer'
 import { ToolingSpan } from '../server/lib/trace/constants'
 import {
   createLocalSpan,
@@ -1224,17 +1221,6 @@ export default async function build(
           )
       )
       loadedConfig = config
-      initializeTraceState({
-        ...exportTraceState(),
-        devAndBuildOtel: config.experimental.devAndBuildOtel,
-      })
-      // The root starts before config loading; keep that original timing.
-      startToolingSpanReporting(
-        getToolingSpanSource(nextBuildSpan)!,
-        ToolingSpan.nextBuild,
-        true
-      )
-
       // Resolve selective build paths now that the page extensions are known.
       const debugBuildPaths = debugBuildPathsPatterns
         ? await (async () => {
@@ -1283,18 +1269,16 @@ export default async function build(
       // events are captured if native bindings fail to load.
       const telemetry = new Telemetry({ distDir })
       setGlobal('telemetry', telemetry)
-      if (config.experimental.devAndBuildOtel) {
-        const { getToolingSessionAttributes } =
-          require('../trace/session') as typeof import('../trace/session')
-        nextBuildSpan.setAttributes(
-          getToolingSessionAttributes(
-            dir,
-            'build',
-            bundler === Bundler.Turbopack,
-            telemetry
-          )
+      const { getToolingSessionAttributes } =
+        require('../trace/session') as typeof import('../trace/session')
+      nextBuildSpan.setAttributes(
+        getToolingSessionAttributes(
+          dir,
+          'build',
+          bundler === Bundler.Turbopack,
+          telemetry
         )
-      }
+      )
 
       // Reuse the loaded config; ordinary builds do not load upgrade tooling.
       if (
@@ -2026,9 +2010,14 @@ export default async function build(
                   }
                 ) as Worker & typeof import('./collect-build-traces')
 
-                buildTracesPromise = getTracer().trace(
-                  ToolingSpan.collectBuildTraces,
-                  { parent: nextBuildSpan },
+                buildTracesPromise = traceLocalSpan(
+                  {
+                    name: ToolingSpan.collectBuildTraces,
+                    reportToOtel: true,
+                    recordToInsights: true,
+                    scope: true,
+                    parent: nextBuildSpan,
+                  },
                   (collectSpan) => {
                     return buildTraceWorker
                       .workerCollectBuildTraces({
@@ -2441,15 +2430,13 @@ export default async function build(
 
       process.env.NEXT_PHASE = PHASE_PRODUCTION_BUILD
 
-      if (config.experimental.devAndBuildOtel) {
-        const { registerToolingBuildInstrumentation } =
-          require('../server/lib/router-utils/instrumentation-globals.external') as typeof import('../server/lib/router-utils/instrumentation-globals.external')
-        await registerToolingBuildInstrumentation(
-          dir,
-          distDir,
-          hasInstrumentationHook
-        )
-      }
+      const { registerToolingBuildInstrumentation } =
+        require('../server/lib/router-utils/instrumentation-globals.external') as typeof import('../server/lib/router-utils/instrumentation-globals.external')
+      await registerToolingBuildInstrumentation(
+        dir,
+        distDir,
+        config.experimental.otelInBuild === true && hasInstrumentationHook
+      )
 
       staticWorker = createStaticWorker(config, {
         numberOfWorkers,
@@ -3058,9 +3045,14 @@ export default async function build(
         isNextImageImported,
         hasNonStaticErrorPage,
         functionsConfigManifest,
-      } = await getTracer().trace(
-        ToolingSpan.staticCheck,
-        { parent: nextBuildSpan },
+      } = await traceLocalSpan(
+        {
+          name: ToolingSpan.staticCheck,
+          reportToOtel: true,
+          recordToInsights: true,
+          scope: true,
+          parent: nextBuildSpan,
+        },
         runStaticCheck
       )
 
@@ -3150,9 +3142,14 @@ export default async function build(
         !isGenerateMode &&
         !buildTracesPromise
       ) {
-        buildTracesPromise = getTracer().trace(
-          ToolingSpan.collectBuildTraces,
-          { parent: nextBuildSpan },
+        buildTracesPromise = traceLocalSpan(
+          {
+            name: ToolingSpan.collectBuildTraces,
+            reportToOtel: true,
+            recordToInsights: true,
+            scope: true,
+            parent: nextBuildSpan,
+          },
           () => {
             const { collectBuildTraces } =
               require('./collect-build-traces') as typeof import('./collect-build-traces')
@@ -4611,9 +4608,14 @@ export default async function build(
 
           await writeManifest(pagesManifestPath, pagesManifest)
         }
-        await getTracer().trace(
-          ToolingSpan.staticGeneration,
-          { parent: nextBuildSpan },
+        await traceLocalSpan(
+          {
+            name: ToolingSpan.staticGeneration,
+            reportToOtel: true,
+            recordToInsights: true,
+            scope: true,
+            parent: nextBuildSpan,
+          },
           runStaticGeneration
         )
 
@@ -5061,9 +5063,13 @@ export default async function build(
       }
       await pendingUpgradeNudge
     }
-    await getTracer().trace(
-      ToolingSpan.nextBuild,
+    await traceLocalSpan(
       {
+        name: ToolingSpan.nextBuild,
+        reportingRoot: true,
+        reportToOtel: true,
+        recordToInsights: true,
+        scope: true,
         attributes: {
           buildMode: experimentalBuildMode,
           version: process.env.__NEXT_VERSION as string,
@@ -5120,11 +5126,9 @@ export default async function build(
 
     // Ensure all buffered spans are on disk before `uploadTrace` reads the file.
     flushAllTraces()
-    if (loadedConfig?.experimental.devAndBuildOtel) {
-      const { closeReporting } =
-        require('../trace/otel') as typeof import('../trace/otel')
-      closeReporting()
-    }
+    const { closeReporting } =
+      require('../server/lib/trace/local-span-replay.node') as typeof import('../server/lib/trace/local-span-replay.node')
+    closeReporting()
     teardownTraceSubscriber()
 
     if (traceUploadUrl && loadedConfig) {

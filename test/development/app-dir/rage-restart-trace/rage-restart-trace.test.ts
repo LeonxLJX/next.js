@@ -15,8 +15,8 @@ import {
 } from '../../../lib/parse-trace-file'
 
 describe.each([true, false])(
-  'rage restart trace attributes (OTel %s)',
-  (toolingEnabled) => {
+  'rage restart trace attributes (otelInBuild %s)',
+  (otelInBuild) => {
     const instrumentationDir = join(
       __dirname,
       '../../../e2e/app-dir/otel-tooling'
@@ -31,7 +31,7 @@ describe.each([true, false])(
           join(instrumentationDir, 'instrumentation-node.ts')
         ),
       },
-      nextConfig: { experimental: { devAndBuildOtel: toolingEnabled } },
+      nextConfig: { experimental: { otelInBuild } },
       skipStart: true,
       startCommand: `node node_modules/next/dist/bin/next ${process.env.IS_WEBPACK_TEST ? '--webpack' : '--turbopack'}`,
       dependencies: {
@@ -76,10 +76,6 @@ describe.each([true, false])(
             : (JSON.parse(line.slice(index + marker.length)).spans ?? [])
         })
         .filter((span) => span.name === 'start-dev-server')
-      if (!toolingEnabled) {
-        expect(startups).toHaveLength(0)
-        return span
-      }
       const exported = startups.at(-1)
       expect(exported).toBeDefined()
       expect(exported!.attributes).toMatchObject({

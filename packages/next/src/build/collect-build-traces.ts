@@ -133,6 +133,7 @@ export async function collectBuildTraces({
   await traceLocalSpan(
     {
       name: 'node-file-trace-build',
+      reportToOtel: true,
       parent: nextBuildSpan,
       attributes: {
         isTurbotrace: 'false', // TODO(arlyon): remove this
