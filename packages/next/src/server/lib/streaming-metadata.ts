@@ -28,11 +28,32 @@ export function shouldServeStreamingMetadata(
   return true
 }
 
+let cachedNonJsBotsPattern: string | undefined
+let cachedNonJsBotsRegex: RegExp | undefined
+
+// Regex configs cross JSON manifests as a string (the same pattern as
+// htmlLimitedBots, images.remotePatterns, and the routes manifest). The
+// `/source/flags` form keeps the flags, unlike `.source`.
+function getNonJsBotsRegex(nonJsBots: string | RegExp | undefined): RegExp {
+  const pattern =
+    nonJsBots instanceof RegExp
+      ? String(nonJsBots)
+      : (nonJsBots ?? String(NON_JS_BOT_UA_RE))
+  if (cachedNonJsBotsPattern !== pattern) {
+    cachedNonJsBotsPattern = pattern
+    const match = /^\/(.*)\/([a-z]*)$/.exec(pattern)
+    cachedNonJsBotsRegex = match
+      ? new RegExp(match[1], match[2])
+      : new RegExp(pattern)
+  }
+  return cachedNonJsBotsRegex!
+}
+
 export function shouldDisableProgressiveLoading(
   userAgent: string | null | undefined,
   experimental: {
     disableProgressiveLoadingForNonJsBots?: boolean
-    nonJsBots?: RegExp
+    nonJsBots?: RegExp | string
   }
 ): boolean {
   if (!experimental.disableProgressiveLoadingForNonJsBots) {
@@ -43,12 +64,5 @@ export function shouldDisableProgressiveLoading(
   if (!userAgent || isOversizedUserAgent(userAgent)) {
     return false
   }
-  // Serialized configs (standalone output, server-files manifest) cannot
-  // carry a RegExp, so a custom pattern only takes effect with the live
-  // config. Everywhere else the default list applies.
-  const nonJsBots =
-    experimental.nonJsBots instanceof RegExp
-      ? experimental.nonJsBots
-      : NON_JS_BOT_UA_RE
-  return nonJsBots.test(userAgent)
+  return getNonJsBotsRegex(experimental.nonJsBots).test(userAgent)
 }

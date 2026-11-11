@@ -1720,7 +1720,8 @@ function assignDefaultsAndValidate(
   }
 
   if (!result.experimental.nonJsBots) {
-    result.experimental.nonJsBots = NON_JS_BOT_UA_RE
+    // @ts-expect-error: override the nonJsBots with default string, type convert: RegExp -> string
+    result.experimental.nonJsBots = String(NON_JS_BOT_UA_RE)
   }
 
   if (
@@ -2330,6 +2331,14 @@ async function loadConfigImpl(
     if (userConfig?.htmlLimitedBots instanceof RegExp) {
       // @ts-expect-error: override the htmlLimitedBots with default string, type covert: RegExp -> string
       userConfig.htmlLimitedBots = userConfig.htmlLimitedBots.source
+    }
+
+    // serialize the regex config into string, keeping its flags
+    if (userConfig.experimental?.nonJsBots instanceof RegExp) {
+      // @ts-expect-error: override the nonJsBots with a string, type convert: RegExp -> string
+      userConfig.experimental.nonJsBots = String(
+        userConfig.experimental.nonJsBots
+      )
     }
 
     enforceExperimentalFeatures(userConfig, {

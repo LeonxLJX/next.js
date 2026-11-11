@@ -6,9 +6,6 @@ const MINIBOT_UA = 'Minibot/1.0'
 
 const HIDDEN_OUTLINE_RE = /<div hidden id="S:/
 
-// Custom patterns only take effect with the live config; serialized configs
-// (standalone output, Vercel functions) fall back to the default list.
-// @force-gate !deploy
 describe('non-js-bots custom regex', () => {
   const { next } = nextTestSetup({
     files: __dirname,
